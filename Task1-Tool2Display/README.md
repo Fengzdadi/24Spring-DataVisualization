@@ -33,6 +33,6 @@ Protein position information among amino acids, the example as follows:
 In this work, don't try low-code platform. Most of the work is done using python. So if you have any good example, happy to hear from you.
 Because the performance of matplotlib is relatively poor (seaborn is mutually exclusive), I finally chose to use Plotly.
 
-<img src="D:\My document\大学\大三下\数据可视化\24Spring-DataVisualization\Task1-Tool2Display\image\Plotly_result_graph.png" alt="image-20240409150610687" style="zoom:50%;" />
+<img src=".\image\Plotly_result_graph.png" alt="image-20240409150610687" style="zoom:50%;" />
 
 In this effect, it is mainly considered that when medical workers use it, they will most likely only focus on which amino acids exist in which sequences, and express the possible probability through color. The small column on the right is better displayed and has some selective display functions.
