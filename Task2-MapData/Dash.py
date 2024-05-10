@@ -10,13 +10,6 @@ import datetime
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
-color_map = {
-    'low': 'yellow',    # 0.7 <= Probability < 0.8
-    'medium': 'orange', # 0.8 <= Probability < 0.9
-    'high': 'red',      # Probability >= 0.9
-    'NaN': 'grey'       # NaN值
-}
-
 # 读取初始道路数据
 with open(
         'D:\\My document\\大学\\大三下\\数据可视化\\24Spring-DataVisualization\\Task2-MapData\\data\\温州交通数据data\\load_track_detail.json',
@@ -89,7 +82,7 @@ app.layout = html.Div([
             )
         ])
     ])
-])
+], style={'display': 'flex', 'justify-content': 'center'})
 
 
 @app.callback(
