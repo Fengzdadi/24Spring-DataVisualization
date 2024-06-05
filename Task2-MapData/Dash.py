@@ -1,135 +1,154 @@
-import dash
-from dash import html, dcc
-import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output
-import json
 import pandas as pd
-import folium
-from folium.plugins import MarkerCluster
-import datetime
-
-app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-
-# 读取初始道路数据
-with open(
-        'D:\\My document\\大学\\大三下\\数据可视化\\24Spring-DataVisualization\\Task2-MapData\\data\\温州交通数据data\\load_track_detail.json',
-        'r') as file:
-    road_data = json.load(file)
-roads_df = pd.DataFrame(road_data)
+import os
+import networkx as nx
+import matplotlib.pyplot as plt
+from dash import Dash, dcc, html
+from dash.dependencies import Input, Output
+import plotly.graph_objs as go
+import plotly.io as pio
 
 
-def generate_base_map(default_location=[28.023353, 120.606054], default_zoom_start=12):
-    base_map = folium.Map(location=default_location, control_scale=True, zoom_start=default_zoom_start)
-    return base_map
+# 读取数据
+def load_data(directory, start_year, end_year):
+    all_data = []
+    for year in range(start_year, end_year + 1):
+        file_path = os.path.join(directory, f"Most Profitable Hollywood Stories - US {year}.csv")
+        if os.path.exists(file_path):
+            yearly_data = pd.read_csv(file_path)
+            yearly_data['Year'] = year
+            all_data.append(yearly_data)
+    return pd.concat(all_data, ignore_index=True)
 
-def minutes_to_time(minutes):
-    # 计算小时和分钟数
-    hours = minutes // 60
-    minutes = minutes % 60
-    # 格式化为几点几分的形式
-    time_str = f"{hours:02d}:{minutes:02d}"
-    return time_str
+
+# 构建电影类型树
+def build_genre_tree(data):
+    G = nx.DiGraph()
+    root = "Movies by Genre"
+    G.add_node(root)
+    for genre in data['Genre'].unique():
+        G.add_node(genre)
+        G.add_edge(root, genre)
+        genre_movies = data[data['Genre'] == genre]
+        for movie in genre_movies['Film']:
+            G.add_node(movie)
+            G.add_edge(genre, movie)
+    return G
 
 
-# 应用布局
+# 构建电影公司树
+def build_studio_tree(data):
+    G = nx.DiGraph()
+    root = "Movies by Studio"
+    G.add_node(root)
+    for studio in data['Major Studio'].unique():
+        G.add_node(studio)
+        G.add_edge(root, studio)
+        studio_movies = data[data['Major Studio'] == studio]
+        for movie in studio_movies['Film']:
+            G.add_node(movie)
+            G.add_edge(studio, movie)
+    return G
+
+
+# 可视化树
+def visualize_tree(G):
+    pos = nx.spring_layout(G)
+    edge_x = []
+    edge_y = []
+
+    for edge in G.edges():
+        x0, y0 = pos[edge[0]]
+        x1, y1 = pos[edge[1]]
+        edge_x.append(x0)
+        edge_x.append(x1)
+        edge_x.append(None)
+        edge_y.append(y0)
+        edge_y.append(y1)
+        edge_y.append(None)
+
+    edge_trace = go.Scatter(
+        x=edge_x, y=edge_y,
+        line=dict(width=0.5, color='#888'),
+        hoverinfo='none',
+        mode='lines')
+
+    node_x = []
+    node_y = []
+    for node in G.nodes():
+        x, y = pos[node]
+        node_x.append(x)
+        node_y.append(y)
+
+    node_trace = go.Scatter(
+        x=node_x, y=node_y,
+        mode='markers+text',
+        text=[str(node) for node in G.nodes()],
+        textposition="top center",
+        hoverinfo='text',
+        marker=dict(
+            showscale=True,
+            colorscale='YlGnBu',
+            size=10,
+            colorbar=dict(
+                thickness=15,
+                title='Node Connections',
+                xanchor='left',
+                titleside='right'
+            ),
+            line_width=2))
+
+    fig = go.Figure(data=[edge_trace, node_trace],
+                    layout=go.Layout(
+                        showlegend=False,
+                        hovermode='closest',
+                        margin=dict(b=0, l=0, r=0, t=0),
+                        annotations=[dict(
+                            text="Tree Visualization",
+                            showarrow=False,
+                            xref="paper", yref="paper",
+                            x=0.005, y=-0.002)],
+                        xaxis=dict(showgrid=False, zeroline=False),
+                        yaxis=dict(showgrid=False, zeroline=False))
+                    )
+    return fig
+
+
+# 创建Dash应用
+app = Dash(__name__)
+
 app.layout = html.Div([
-    dbc.Container([
-        dbc.Row([
-            dbc.Col(
-                dcc.DatePickerSingle(
-                    id='date-picker',
-                    min_date_allowed=pd.Timestamp('2014-01-01'),
-                    max_date_allowed=pd.Timestamp('2014-01-15'),
-                    initial_visible_month=pd.Timestamp('2014-01-01'),
-                    date=str(pd.Timestamp('2014-01-01')),
-                ),
-                width=4
-            ),
-            dbc.Col(
-                dcc.Dropdown(
-                    id='time-dropdown',
-                    options=[{'label': minutes_to_time(i * 5), 'value': i * 5} for i in range(1, 289)],
-                    value=5
-                ),
-                width=4
-            ),
-        ]),
-        dbc.Row([
-            dbc.Col(html.Div(id='map-container'), width=12)
-        ]),
-        dbc.Row([
-            dbc.Col(
-                html.Div([
-                    html.H3('Wenzhou Transportation', style={'text-align': 'center'}),
-                    html.Div([
-                        html.Div(style={'width': '20px', 'height': '20px', 'background-color': 'red', 'display': 'inline-block'}),
-                        html.Span('High congestion', style={'padding-left': '5px'}),
-                    ]),
-                    html.Div([
-                        html.Div(style={'width': '20px', 'height': '20px', 'background-color': 'orange', 'display': 'inline-block'}),
-                        html.Span('Moderate congestion', style={'padding-left': '5px'}),
-                    ]),
-                    html.Div([
-                        html.Div(style={'width': '20px', 'height': '20px', 'background-color': 'yellow', 'display': 'inline-block'}),
-                        html.Span('Low congestion', style={'padding-left': '5px'}),
-                    ]),
-                    html.Div([
-                        html.Div(style={'width': '20px', 'height': '20px', 'background-color': 'green', 'display': 'inline-block'}),
-                        html.Span('Smooth traffic', style={'padding-left': '5px'}),
-                    ]),
-                ]),
-                width=12
-            )
-        ])
-    ])
-], style={'display': 'flex', 'justify-content': 'center'})
+    html.H1("Hollywood Movies Tree Visualization"),
+    dcc.Dropdown(
+        id='year-range',
+        options=[{'label': f'{year}', 'value': year} for year in range(2007, 2012)],
+        multi=True,
+        value=[2007]
+    ),
+    dcc.RadioItems(
+        id='tree-type',
+        options=[
+            {'label': 'Genre Tree', 'value': 'genre'},
+            {'label': 'Studio Tree', 'value': 'studio'}
+        ],
+        value='genre'
+    ),
+    dcc.Graph(id='tree-graph')
+])
 
 
 @app.callback(
-    Output('map-container', 'children'),
-    [Input('date-picker', 'date'),
-     Input('time-dropdown', 'value')]
-)
-def update_output(date, time_minute):
-    if date is not None:
-        date = pd.Timestamp(date).strftime('%Y%m%d')  # Format date to match filenames
-        traffic_filename = f'D:\\My document\\大学\\大三下\\数据可视化\\24Spring-DataVisualization\\Task2-MapData\\data\\温州交通数据data\\five_carflow{date}.json'
-        with open(traffic_filename, 'r') as file:
-            traffic_data = json.load(file)
-        traffic_df = pd.DataFrame(traffic_data)
-        traffic_df = traffic_df[traffic_df['time_minute'] == time_minute]
-
-        folium_map = generate_base_map()
-        for _, road in roads_df.iterrows():
-            road_id = road['id']
-            points = []
-            for i in range(1, 5):
-                lat = road.get(f'lat{i}')
-                lng = road.get(f'lng{i}')
-                if pd.notna(lat) and pd.notna(lng):
-                    points.append((lat, lng))
-            # points = [(road[f'lat{i}'], road[f'lng{i}']) for i in range(1, 5) if road[f'lat{i}'] and road[f'lng{i}']]
-            if points:
-                traffic = traffic_df[traffic_df['road_id'] == road_id]
-
-                car_flow_in = traffic['car_flow_in'].sum()
-                color = 'green'        # 'green'
-                if car_flow_in > 100:
-                    color = 'red'
-                elif car_flow_in > 50:
-                    color = 'orange'
-                elif car_flow_in > 20:
-                    color = 'yellow'
-
-                car_flow_out = traffic['car_flow_out'].sum()
-                folium.PolyLine(points, color=color, weight=4, opacity=0.7,
-                                tooltip=f'Road ID: {road_id}, Car flow in: {car_flow_in}, Car flow out: {car_flow_out}').add_to(folium_map)
-
-        # 保存地图为 HTML 文件并嵌入
-        folium_map.save('temp_map.html')
-        return html.Iframe(srcDoc=open('temp_map.html', 'r').read(), width='100%', height='800vh')
+    Output('tree-graph', 'figure'),
+    Input('year-range', 'value'),
+    Input('tree-type', 'value'))
+def update_tree(year_range, tree_type):
+    directory = "path/to/your/dataset"  # 替换为数据集目录路径
+    data = load_data(directory, min(year_range), max(year_range))
+    if tree_type == 'genre':
+        tree = build_genre_tree(data)
+    else:
+        tree = build_studio_tree(data)
+    return visualize_tree(tree)
 
 
-# 运行服务器
 if __name__ == '__main__':
     app.run_server(debug=True)
